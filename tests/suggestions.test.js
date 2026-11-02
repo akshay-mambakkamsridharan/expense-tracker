@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMessages, buildSpendingProfile, parseSuggestions } from '../lib/suggestions.js';
+import { buildMessages, buildSpendingProfile, describeCategory, parseSuggestions } from '../lib/suggestions.js';
 
 const categories = [
   { _id: 'rent', name: 'Rent', essential: true },
@@ -42,11 +42,25 @@ test('buildMessages sends dollars, not cents, and marks essential categories', (
 
 test('parseSuggestions keeps valid suggestions and normalizes category names', () => {
   const raw = JSON.stringify({
-    suggestions: [{ category: 'dining out', observation: 'Doubled in October.', recommendation: 'Cook twice more a week.', estimatedMonthlySavings: 120 }],
+    suggestions: [{ category: 'dining out', recommendation: ' Cook twice more a week. ', estimatedMonthlySavings: 120 }],
   });
   assert.deepEqual(parseSuggestions(raw, profile), [
-    { category: 'Dining Out', observation: 'Doubled in October.', recommendation: 'Cook twice more a week.', estimatedMonthlySavingsCents: 12000 },
+    {
+      category: 'Dining Out',
+      observation: 'Averaged $300.00/month over Aug–Oct; $600.00 in October.',
+      recommendation: 'Cook twice more a week.',
+      estimatedMonthlySavingsCents: 12000,
+    },
   ]);
+});
+
+test('parseSuggestions replaces the model\'s own numbers with facts from the data', () => {
+  const raw = JSON.stringify({
+    suggestions: [{ category: 'Dining Out', observation: 'Spending rose from October to November by $9,999.', recommendation: 'Eat in.', estimatedMonthlySavings: 50 }],
+  });
+  const [food] = parseSuggestions(raw, profile);
+  assert.equal(food.observation, describeCategory(profile.categories.find((c) => c.name === 'Dining Out'), months));
+  assert.doesNotMatch(food.observation, /November|9,999/);
 });
 
 test('parseSuggestions drops hallucinated, essential and duplicate categories', () => {
@@ -65,15 +79,19 @@ test('parseSuggestions drops hallucinated, essential and duplicate categories', 
 });
 
 test('parseSuggestions clamps savings to what the user actually spends', () => {
+  const raw = JSON.stringify({ suggestions: [{ category: 'Subscriptions', recommendation: 'Cancel all.', estimatedMonthlySavings: 9999 }] });
+  const [subs] = parseSuggestions(raw, profile);
+  assert.equal(subs.estimatedMonthlySavingsCents, 1500); // 3-month average of $45 in one month
+});
+
+test('parseSuggestions drops suggestions that would save nothing', () => {
   const raw = JSON.stringify({
     suggestions: [
-      { category: 'Subscriptions', recommendation: 'Cancel all.', estimatedMonthlySavings: 9999 },
       { category: 'Dining Out', recommendation: 'Eat in.', estimatedMonthlySavings: -50 },
+      { category: 'Subscriptions', recommendation: 'Not a strong suggestion.', estimatedMonthlySavings: 0 },
     ],
   });
-  const [subs, food] = parseSuggestions(raw, profile);
-  assert.equal(subs.estimatedMonthlySavingsCents, 1500); // 3-month average of $45 in one month
-  assert.equal(food.estimatedMonthlySavingsCents, 0);
+  assert.deepEqual(parseSuggestions(raw, profile), []);
 });
 
 test('parseSuggestions rejects malformed model output', () => {

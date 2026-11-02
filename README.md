@@ -2,14 +2,19 @@
 
 A full-stack personal finance app for logging income and expenses by category, with a live analytics dashboard and an AI suggestion engine that recommends where to cut non-essential spending.
 
-**Stack:** Next.js 15 (App Router) · React 19 · Node.js · MongoDB · REST APIs · Recharts · OpenAI API · JavaScript
+**Stack:** Next.js 15 (App Router) · React 19 · Node.js · MongoDB · REST APIs · Recharts · Ollama or OpenAI · JavaScript
+
+![Expense Tracker dashboard](docs/screenshot.png)
 
 ## Features
 
 - **Income and expense logging** with dates, notes and user-defined categories
 - **Essential vs. non-essential categories.** Essential spending, like rent, is never targeted by AI suggestions
-- **Live dashboard:** monthly income, expenses and net; spending-by-category donut chart; daily cash-flow chart. It refreshes after every change, every 15 seconds, and when the tab regains focus
-- **AI savings suggestions:** analyzes the last 3 months of spending and returns up to 3 concrete, category-level recommendations with estimated monthly savings
+- **Month at a glance:** a one-sentence summary ("You earned $X and spent $Y. $Z left over.") above a single bar of spending split by category and measured against income. Essential spending is solid and flexible spending is striped
+- **Fast logging:** large amount field, keyboard-friendly form, and a confirmation after every entry so you can log several in a row
+- **Transactions grouped by day** with daily net totals, plus a day-by-day income and spending chart
+- **Live updates:** the dashboard refreshes after every change, every 15 seconds, and when the tab regains focus. The selected month is kept in the URL (`?month=2026-10`)
+- **AI savings suggestions:** analyzes the last 3 months of spending and returns up to 3 concrete, category-level recommendations with estimated monthly savings. It runs on a **free local model through Ollama** by default, so spending data never leaves your machine, or on OpenAI with one setting
 
 ## Architecture
 
@@ -28,7 +33,7 @@ lib/
   validation.js              Request validation (pure, unit tested)
   analytics.js               Monthly summary builder (pure, unit tested)
   suggestions.js             Spending profile, LLM prompt, output validation (pure, unit tested)
-  openai.js                  OpenAI Chat Completions call
+  llm.js                     Provider-neutral LLM call (Ollama or OpenAI, same Chat Completions format)
   mongodb.js                 Cached MongoDB connection + indexes
 scripts/seed.js              Demo data: 10 categories, 3 months of transactions
 tests/                       node:test unit tests
@@ -37,10 +42,13 @@ tests/                       node:test unit tests
 ## Design decisions
 
 - **Money is stored as integer cents**, so totals never pick up floating-point errors like `0.1 + 0.2`.
-- **LLM output is validated, not trusted.** `parseSuggestions` drops suggestions for categories that don't exist (hallucinations) or are marked essential, removes duplicates, and clamps each savings estimate to between $0 and what the user actually spends in that category.
+- **The LLM handles judgment; code handles facts.** The model only picks which categories to cut and writes the advice. Every number the user sees, like "Averaged $234.48/month over Aug–Oct", is computed from real data. Early testing with a small local model showed it inventing figures and months, so its own numbers are discarded.
+- **LLM output is validated, not trusted.** `parseSuggestions` drops suggestions for categories that don't exist (hallucinations), are marked essential or would save nothing, removes duplicates, and clamps each savings estimate to what the user actually spends in that category.
+- **Out-of-date responses are ignored.** If you switch months quickly, a slow response for the previous month can't overwrite the month you're viewing.
 - **Business logic is kept out of route handlers.** Validation, analytics and prompt building are pure functions, so they're tested without a database or network.
 - **Data integrity is enforced in the API.** A transaction's type must match its category's kind; category names are unique per kind (case-insensitive index); a category that still has transactions can't be deleted.
-- **It degrades gracefully.** The app runs fully without an OpenAI key. The suggestions panel explains how to enable it, and a MongoDB outage returns a clear 503.
+- **The LLM provider is configuration, not code.** Ollama and OpenAI both speak the Chat Completions format, so `AI_PROVIDER` switches between them. The OpenAI key is never sent to any other provider.
+- **It degrades gracefully.** Every AI failure the user can fix themselves gets a specific message: Ollama not running, model not downloaded, bad key, no credits, rate limits. A MongoDB outage returns a clear 503.
 
 ## Getting started
 
@@ -60,14 +68,24 @@ brew tap mongodb/brew && brew install mongodb-community
 brew services start mongodb-community
 ```
 
+For free local AI suggestions, install Ollama and download the default model:
+
+```bash
+brew install ollama && brew services start ollama
+ollama pull llama3.2:3b
+```
+
 ### Environment variables
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `MONGODB_URI` | `mongodb://127.0.0.1:27017` | MongoDB connection string |
 | `MONGODB_DB` | `expense_tracker` | Database name |
-| `OPENAI_API_KEY` | none | Enables AI suggestions |
-| `OPENAI_MODEL` | `gpt-5-mini` | Model used for suggestions |
+| `AI_PROVIDER` | `openai` if a key is set, else `ollama` | Which LLM generates savings ideas |
+| `OLLAMA_MODEL` | `llama3.2:3b` | Local model used with Ollama |
+| `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Ollama server address |
+| `OPENAI_API_KEY` | none | Required only for `AI_PROVIDER=openai` |
+| `OPENAI_MODEL` | `gpt-5-mini` | Model used with OpenAI |
 
 ## Tests
 
@@ -75,7 +93,7 @@ brew services start mongodb-community
 npm test
 ```
 
-18 unit tests cover input validation (amounts, impossible dates, month ranges), the analytics summary, and the AI-output guards (hallucinated categories, essential categories, out-of-range savings, malformed JSON).
+24 unit tests cover input validation (amounts, impossible dates, month ranges), the analytics summary, the AI-output guards (hallucinated categories, essential categories, invented numbers, zero or out-of-range savings, malformed JSON), and provider selection.
 
 ## Built with Claude Code
 

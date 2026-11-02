@@ -1,6 +1,6 @@
 import { getDb } from '@/lib/mongodb';
 import { error, handle, json, readJson } from '@/lib/api';
-import { MissingApiKeyError, fetchSuggestions } from '@/lib/openai';
+import { LLMSetupError, MissingApiKeyError, fetchSuggestions } from '@/lib/llm';
 import { buildSpendingProfile } from '@/lib/suggestions';
 import { currentMonth, parseMonth, previousMonths } from '@/lib/validation';
 
@@ -31,9 +31,8 @@ export const POST = handle(async (request) => {
     const suggestions = await fetchSuggestions(profile);
     return json({ months, suggestions });
   } catch (err) {
-    if (err instanceof MissingApiKeyError) {
-      return error('Add OPENAI_API_KEY to .env.local and restart the server to enable AI suggestions.', 503, { code: 'NO_API_KEY' });
-    }
+    if (err instanceof MissingApiKeyError) return error(err.message, 503, { code: 'NO_API_KEY' });
+    if (err instanceof LLMSetupError) return error(err.message, 503, { code: 'AI_SETUP' });
     console.error(err);
     return error('The AI service did not return usable suggestions. Try again.', 502);
   }
