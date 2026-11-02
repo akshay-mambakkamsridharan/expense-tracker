@@ -82,27 +82,27 @@ ollama pull llama3.2:3b
 
 ### Environment variables
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `MONGODB_URI` | `mongodb://127.0.0.1:27017` | MongoDB connection string |
-| `MONGODB_DB` | `expense_tracker` | Database name |
-| `AI_PROVIDER` | `openai` if a key is set, else `ollama` | Which LLM generates savings ideas |
-| `OLLAMA_MODEL` | `llama3.2:3b` | Local model used with Ollama |
-| `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Ollama server address |
-| `OPENAI_API_KEY` | none | Required only for `AI_PROVIDER=openai` |
-| `OPENAI_MODEL` | `gpt-5-mini` | Model used with OpenAI |
+| Variable          | Default                                 | Purpose                                |
+| ----------------- | --------------------------------------- | -------------------------------------- |
+| `MONGODB_URI`     | `mongodb://127.0.0.1:27017`             | MongoDB connection string              |
+| `MONGODB_DB`      | `expense_tracker`                       | Database name                          |
+| `AI_PROVIDER`     | `openai` if a key is set, else `ollama` | Which LLM generates savings ideas      |
+| `OLLAMA_MODEL`    | `llama3.2:3b`                           | Local model used with Ollama           |
+| `OLLAMA_BASE_URL` | `http://localhost:11434/v1`             | Ollama server address                  |
+| `OPENAI_API_KEY`  | none                                    | Required only for `AI_PROVIDER=openai` |
+| `OPENAI_MODEL`    | `gpt-5-mini`                            | Model used with OpenAI                 |
 
 ## MCP server
 
-The app includes a [Model Context Protocol](https://modelcontextprotocol.io) server, so an AI assistant can answer questions like *"Where did my money go in October?"* or handle *"Log $18 for lunch under Dining Out"* directly against your data.
+The app includes a [Model Context Protocol](https://modelcontextprotocol.io) server, so an AI assistant can answer questions like _"Where did my money go in October?"_ or handle _"Log $18 for lunch under Dining Out"_ directly against your data.
 
-| Tool | What it does | Writes data? |
-|---|---|---|
-| `list_categories` | All categories, with the essential flag | No |
-| `get_month_summary` | Income, spending, net, and spending by category for a month | No |
-| `list_transactions` | A month's transactions, filterable by category or type | No |
-| `get_spending_trends` | Per-category totals and averages over the last N months | No |
-| `add_transaction` | Logs an income or expense under an existing category | Yes |
+| Tool                  | What it does                                                | Writes data? |
+| --------------------- | ----------------------------------------------------------- | ------------ |
+| `list_categories`     | All categories, with the essential flag                     | No           |
+| `get_month_summary`   | Income, spending, net, and spending by category for a month | No           |
+| `list_transactions`   | A month's transactions, filterable by category or type      | No           |
+| `get_spending_trends` | Per-category totals and averages over the last N months     | No           |
+| `add_transaction`     | Logs an income or expense under an existing category        | Yes          |
 
 **Using it with Claude Code:** the repo's `.mcp.json` registers the server automatically. Run `claude` in this folder and approve `expense-tracker` when prompted. To use it from any folder:
 
@@ -131,12 +131,23 @@ npm test
 
 24 unit tests (`npm test`) cover input validation (amounts, impossible dates, month ranges), the analytics summary, the AI-output guards (hallucinated categories, essential categories, invented numbers, zero or out-of-range savings, malformed JSON), and provider selection.
 
-## Built with Claude Code
+## How this was built
 
-This project was built by directing Claude Code as the coding agent: I wrote the requirements, reviewed the generated code, and tested the result.
+I built this project with [Claude Code](https://claude.com/claude-code) as the coding agent. My role was to define what to build, make the product and technical decisions, and verify the result. Claude Code wrote most of the code.
 
-<!-- TODO(Akshay): replace with your own notes — 2-3 concrete moments, e.g.
-- What I asked the agent for and what it produced
-- Something I caught in review and changed (and why)
-- A test I defined to check the agent's work
--->
+### Decisions I made
+
+- **Scope and stack:** a single-user app covering income and expense logging, categories, a live dashboard and AI savings ideas, written in JavaScript on Next.js with a local MongoDB database.
+- **AI provider:** when OpenAI API credits weren't available, I chose a free local model through Ollama. Spending data stays on the device, and OpenAI remains available through one setting.
+- **User experience:** I asked for a redesign that looks modern without being flashy, with the priority on making it obvious where each feature lives and how to use it.
+- **Assistant access:** I added an MCP server so Claude can answer questions about my spending and log expenses, and deliberately left out a delete tool.
+
+### Issues found during development
+
+- **The model invented numbers.** Early runs with the local model cited wrong amounts and a month outside the data. Fix: the model now only chooses categories and writes advice, and every figure is computed from real data, with tests to keep it that way.
+- **A race condition showed the wrong month.** A slow response for a previous month could overwrite the month being viewed. Fix: out-of-date responses are ignored.
+- **The layout overflowed on phones.** Form fields forced the page wider than the screen. Fix: the grid columns now shrink to fit.
+
+### Verification
+
+Before publishing, I tested every feature by hand in the browser: adding and deleting transactions, managing categories, switching months and generating savings ideas. Automated checks cover the rest: 24 unit tests, an end-to-end MCP smoke test, and a successful production build.
