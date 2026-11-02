@@ -1,5 +1,7 @@
 # Expense Tracker
 
+[![CI](https://github.com/akshay-mambakkamsridharan/expense-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/akshay-mambakkamsridharan/expense-tracker/actions/workflows/ci.yml)
+
 A full-stack personal finance app for logging income and expenses by category, with a live analytics dashboard and an AI suggestion engine that recommends where to cut non-essential spending.
 
 **Stack:** Next.js 15 (App Router) · React 19 · Node.js · MongoDB · REST APIs · Recharts · Ollama or OpenAI · JavaScript
@@ -128,6 +130,8 @@ npm run mcp:smoke
 ```bash
 npm test
 ```
+
+Every push and pull request runs the full suite on **GitHub Actions** (Node 22 and 24, with a real MongoDB service): unit tests, the MCP end-to-end smoke test, and a production build.
 
 24 unit tests (`npm test`) cover input validation (amounts, impossible dates, month ranges), the analytics summary, the AI-output guards (hallucinated categories, essential categories, invented numbers, zero or out-of-range savings, malformed JSON), and provider selection.
 
